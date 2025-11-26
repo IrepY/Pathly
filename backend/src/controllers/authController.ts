@@ -6,7 +6,7 @@ import { AppError } from '../middleware/errorHandler';
 
 export const register = async (req: Request, res: Response) => {
   try {
-    const { email, password, fullName } = req.body;
+    const { email, password, fullName, firstName, lastName } = req.body;
 
     // Validate input
     if (!email || !password) {
@@ -14,8 +14,8 @@ export const register = async (req: Request, res: Response) => {
     }
 
     // Check if user exists
-    const existingUser = await query('SELECT id FROM users WHERE email = $1', [email]);
-    if (existingUser.rows.length > 0) {
+    const existingUser = await query('SELECT id FROM users WHERE email = ?', [email]);
+    if (existingUser && Array.isArray(existingUser) && existingUser.length > 0) {
       throw new AppError(409, 'User already exists');
     }
 
@@ -23,19 +23,25 @@ export const register = async (req: Request, res: Response) => {
     const passwordHash = await hashPassword(password);
 
     // Create user
-    const result = await query(
-      `INSERT INTO users (email, password_hash, full_name)
-       VALUES ($1, $2, $3)
-       RETURNING id, email, full_name, created_at`,
-      [email, passwordHash, fullName || null]
+    await query(
+      `INSERT INTO users (email, password_hash, first_name, last_name)
+       VALUES (?, ?, ?, ?)`,
+      [email, passwordHash, firstName || fullName || null, lastName || null]
     );
 
-    const user = result.rows[0];
+    // Get the created user
+    const userResult = await query(
+      `SELECT id, email, first_name, last_name, created_at FROM users WHERE email = ?`,
+      [email]
+    );
+
+    const users = Array.isArray(userResult) ? userResult : (userResult?.rows || []);
+    const user = users[0];
 
     // Create user preferences
     await query(
       `INSERT INTO user_preferences (user_id)
-       VALUES ($1)`,
+       VALUES (?)`,
       [user.id]
     );
 
@@ -47,16 +53,18 @@ export const register = async (req: Request, res: Response) => {
       user: {
         id: user.id,
         email: user.email,
-        fullName: user.full_name,
+        firstName: user.first_name,
+        lastName: user.last_name,
         createdAt: user.created_at,
       },
       token,
     });
   } catch (error) {
+    console.error('Register error:', error);
     if (error instanceof AppError) {
       return res.status(error.statusCode).json({ error: error.message });
     }
-    res.status(500).json({ error: 'Registration failed' });
+    res.status(500).json({ error: 'Registration failed', details: (error as Error).message });
   }
 };
 
@@ -70,12 +78,13 @@ export const login = async (req: Request, res: Response) => {
     }
 
     // Find user
-    const result = await query('SELECT * FROM users WHERE email = $1', [email]);
-    if (result.rows.length === 0) {
+    const result = await query('SELECT * FROM users WHERE email = ?', [email]);
+    const users = Array.isArray(result) ? result : (result?.rows || []);
+    if (users.length === 0) {
       throw new AppError(401, 'Invalid email or password');
     }
 
-    const user = result.rows[0];
+    const user = users[0];
 
     // Verify password
     const isPasswordValid = await comparePassword(password, user.password_hash);
@@ -84,7 +93,7 @@ export const login = async (req: Request, res: Response) => {
     }
 
     // Update last login
-    await query('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = $1', [user.id]);
+    await query('UPDATE users SET updated_at = CURRENT_TIMESTAMP WHERE id = ?', [user.id]);
 
     // Generate token
     const token = generateToken(user.id);
@@ -94,15 +103,17 @@ export const login = async (req: Request, res: Response) => {
       user: {
         id: user.id,
         email: user.email,
-        fullName: user.full_name,
+        firstName: user.first_name,
+        lastName: user.last_name,
       },
       token,
     });
   } catch (error) {
+    console.error('Login error:', error);
     if (error instanceof AppError) {
       return res.status(error.statusCode).json({ error: error.message });
     }
-    res.status(500).json({ error: 'Login failed' });
+    res.status(500).json({ error: 'Login failed', details: (error as Error).message });
   }
 };
 

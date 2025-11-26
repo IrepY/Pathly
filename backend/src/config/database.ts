@@ -35,35 +35,97 @@ const dbAll = promisify(db.all.bind(db));
  */
 async function initializeDatabase() {
   try {
+    // Load schema
     const schemaPath = path.join(__dirname, '../../../database/init.sqlite.sql');
     const schema = fs.readFileSync(schemaPath, 'utf-8');
 
-    // Split statements by semicolon, handling comments
+    // Split statements by semicolon, handling comments and multi-line statements
     let statements = schema
-      .split('\n')
-      .filter((line) => !line.trim().startsWith('--')) // Remove comment lines
-      .join('\n')
       .split(';')
       .map((stmt) => stmt.trim())
-      .filter((stmt) => stmt.length > 0);
+      .filter((stmt) => {
+        // Remove empty statements and pure comment lines
+        if (stmt.length === 0 || stmt.startsWith('--')) return false;
+        // Keep CREATE, INSERT, CREATE TRIGGER, etc.
+        return /^(CREATE|INSERT|UPDATE|DELETE|PRAGMA)/.test(stmt.toUpperCase());
+      });
 
     for (const statement of statements) {
       try {
         await new Promise<void>((resolve, reject) => {
           db.run(statement, (err: Error | null) => {
-            if (err) reject(err);
-            else resolve();
+            if (err) {
+              if (err.message.includes('already exists')) {
+                resolve(); // Silently ignore table exists errors
+              } else {
+                console.error('SQL Error:', err.message, 'Statement:', statement.substring(0, 50));
+                resolve(); // Continue anyway
+              }
+            } else resolve();
           });
         });
       } catch (error) {
-        // Some statements might fail if table exists, continue anyway
-        console.log('Note: Statement error (possibly table exists already):', (error as Error).message);
+        console.log('Statement execution note:', (error as Error).message);
       }
     }
 
     console.log('✅ Database schema initialized');
+
+    // Load seed data
+    await loadSeedData();
   } catch (error) {
     console.error('⚠️ Database initialization error:', error);
+  }
+}
+
+/**
+ * Load seed data if needed
+ */
+async function loadSeedData() {
+  try {
+    // Check if data already exists
+    const stopCount = await new Promise<number>((resolve, reject) => {
+      db.get('SELECT COUNT(*) as count FROM stops', (err: Error | null, row: any) => {
+        if (err) reject(err);
+        else resolve(row?.count || 0);
+      });
+    });
+
+    // If stops table is empty, load seed data
+    if (stopCount === 0) {
+      console.log('📊 Loading seed data...');
+      const seedPath = path.join(__dirname, '../../../database/seed.sql');
+      const seedData = fs.readFileSync(seedPath, 'utf-8');
+
+      let seedStatements = seedData
+        .split(';')
+        .map((stmt) => stmt.trim())
+        .filter((stmt) => {
+          if (stmt.length === 0 || stmt.startsWith('--')) return false;
+          return /^(INSERT|UPDATE|DELETE)/.test(stmt.toUpperCase());
+        });
+
+      for (const statement of seedStatements) {
+        try {
+          await new Promise<void>((resolve, reject) => {
+            db.run(statement, (err: Error | null) => {
+              if (err) {
+                console.error('Seed SQL Error:', err.message);
+                resolve(); // Continue anyway
+              } else resolve();
+            });
+          });
+        } catch (error) {
+          console.log('Seed statement note:', (error as Error).message);
+        }
+      }
+
+      console.log('✅ Seed data loaded successfully');
+    } else {
+      console.log('✅ Database already has data, skipping seed');
+    }
+  } catch (error) {
+    console.error('⚠️ Seed data loading error:', error);
   }
 }
 

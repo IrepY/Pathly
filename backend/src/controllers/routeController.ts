@@ -1,19 +1,20 @@
 import { Request, Response } from 'express';
 import { query } from '../config/database';
 import { AppError } from '../middleware/errorHandler';
-import { calculateRoutes } from '../services/routeCalculator';
+import { findRoutes } from '../services/routeSearchService';
 
 export const searchRoutes = async (req: Request, res: Response) => {
   try {
     const {
       originLat,
       originLon,
+      originName,
       destinationLat,
       destinationLon,
+      destinationName,
       departureTime,
-      arrivalTime,
-      optimization = 'fastest',
       maxTransfers = 3,
+      preferredTypes,
     } = req.body;
 
     // Validate input
@@ -21,34 +22,40 @@ export const searchRoutes = async (req: Request, res: Response) => {
       throw new AppError(400, 'Origin and destination coordinates are required');
     }
 
-    // Calculate routes
-    const routes = await calculateRoutes(
+    // Search routes using the route search service
+    const result = await findRoutes(
       {
-        lat: parseFloat(originLat),
-        lon: parseFloat(originLon),
+        latitude: parseFloat(originLat),
+        longitude: parseFloat(originLon),
+        name: originName || 'Origin',
       },
       {
-        lat: parseFloat(destinationLat),
-        lon: parseFloat(destinationLon),
+        latitude: parseFloat(destinationLat),
+        longitude: parseFloat(destinationLon),
+        name: destinationName || 'Destination',
       },
       {
-        departureTime: departureTime ? new Date(departureTime) : new Date(),
-        arrivalTime: arrivalTime ? new Date(arrivalTime) : undefined,
-        optimization,
-        maxTransfers,
+        maxWalkingDistance: 500,
+        preferredTypes: preferredTypes || ['metro', 'tram', 'bus'],
+        allowTransfers: maxTransfers > 0,
       }
     );
 
     res.json({
-      routes,
-      count: routes.length,
-      optimization,
+      success: result.success,
+      routes: result.routes,
+      count: result.routes.length,
+      fromLocation: result.fromLocation,
+      toLocation: result.toLocation,
+      dataSource: result.dataSource,
+      timestamp: result.timestamp,
     });
   } catch (error) {
+    console.error('Route search error:', error);
     if (error instanceof AppError) {
       return res.status(error.statusCode).json({ error: error.message });
     }
-    res.status(500).json({ error: 'Route search failed' });
+    res.status(500).json({ error: 'Route search failed', details: (error as Error).message });
   }
 };
 
@@ -65,16 +72,15 @@ export const saveRoute = async (req: Request, res: Response) => {
       destinationName,
       destinationLat,
       destinationLon,
-      label,
+      notes,
       routeData,
-      isFavorite = false,
     } = req.body;
 
-    const result = await query(
+    // Insert the route
+    await query(
       `INSERT INTO saved_routes
-       (user_id, origin_name, origin_lat, origin_lon, destination_name, destination_lat, destination_lon, label, route_data, is_favorite)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-       RETURNING *`,
+       (user_id, origin_name, origin_lat, origin_lon, destination_name, destination_lat, destination_lon, notes, route_data)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         req.userId,
         originName,
@@ -83,15 +89,21 @@ export const saveRoute = async (req: Request, res: Response) => {
         destinationName,
         destinationLat,
         destinationLon,
-        label,
+        notes,
         JSON.stringify(routeData),
-        isFavorite,
       ]
     );
 
+    // Get the created route
+    const result = await query(
+      `SELECT * FROM saved_routes WHERE user_id = ? ORDER BY saved_at DESC LIMIT 1`,
+      [req.userId]
+    );
+
+    const routes = Array.isArray(result) ? result : (result?.rows || []);
     res.status(201).json({
       message: 'Route saved successfully',
-      route: result.rows[0],
+      route: routes[0],
     });
   } catch (error) {
     if (error instanceof AppError) {
@@ -108,13 +120,14 @@ export const getSavedRoutes = async (req: Request, res: Response) => {
     }
 
     const result = await query(
-      `SELECT * FROM saved_routes WHERE user_id = $1 ORDER BY updated_at DESC`,
+      `SELECT * FROM saved_routes WHERE user_id = ? ORDER BY saved_at DESC`,
       [req.userId]
     );
 
+    const routes = Array.isArray(result) ? result : (result?.rows || []);
     res.json({
-      routes: result.rows,
-      count: result.rows.length,
+      routes,
+      count: routes.length,
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to get saved routes' });
@@ -128,24 +141,24 @@ export const updateSavedRoute = async (req: Request, res: Response) => {
     }
 
     const { id } = req.params;
-    const { label, isFavorite } = req.body;
+    const { notes } = req.body;
 
     const result = await query(
       `UPDATE saved_routes
-       SET label = COALESCE($1, label),
-           is_favorite = COALESCE($2, is_favorite)
-       WHERE id = $3 AND user_id = $4
+       SET notes = CASE WHEN ? IS NOT NULL THEN ? ELSE notes END
+       WHERE id = ? AND user_id = ?
        RETURNING *`,
-      [label, isFavorite, id, req.userId]
+      [notes || null, notes, id, req.userId]
     );
 
-    if (result.rows.length === 0) {
+    const routes = Array.isArray(result) ? result : (result?.rows || []);
+    if (routes.length === 0) {
       throw new AppError(404, 'Route not found');
     }
 
     res.json({
       message: 'Route updated successfully',
-      route: result.rows[0],
+      route: routes[0],
     });
   } catch (error) {
     if (error instanceof AppError) {
@@ -164,11 +177,12 @@ export const deleteSavedRoute = async (req: Request, res: Response) => {
     const { id } = req.params;
 
     const result = await query(
-      `DELETE FROM saved_routes WHERE id = $1 AND user_id = $2 RETURNING id`,
+      `DELETE FROM saved_routes WHERE id = ? AND user_id = ? RETURNING id`,
       [id, req.userId]
     );
 
-    if (result.rows.length === 0) {
+    const deleted = Array.isArray(result) ? result : (result?.rows || []);
+    if (deleted.length === 0) {
       throw new AppError(404, 'Route not found');
     }
 

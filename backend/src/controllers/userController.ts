@@ -9,32 +9,36 @@ export const getUserProfile = async (req: Request, res: Response) => {
     }
 
     const result = await query(
-      `SELECT id, email, full_name, created_at, last_login
-       FROM users WHERE id = $1`,
+      `SELECT id, email, first_name, last_name, created_at, updated_at
+       FROM users WHERE id = ?`,
       [req.userId]
     );
 
-    if (result.rows.length === 0) {
+    const users = Array.isArray(result) ? result : (result?.rows || []);
+    if (users.length === 0) {
       throw new AppError(404, 'User not found');
     }
 
-    const user = result.rows[0];
+    const user = users[0];
 
     // Get preferences
     const prefsResult = await query(
-      `SELECT * FROM user_preferences WHERE user_id = $1`,
+      `SELECT * FROM user_preferences WHERE user_id = ?`,
       [req.userId]
     );
+
+    const prefs = Array.isArray(prefsResult) ? prefsResult : (prefsResult?.rows || []);
 
     res.json({
       user: {
         id: user.id,
         email: user.email,
-        fullName: user.full_name,
+        firstName: user.first_name,
+        lastName: user.last_name,
         createdAt: user.created_at,
-        lastLogin: user.last_login,
+        updatedAt: user.updated_at,
       },
-      preferences: prefsResult.rows[0] || null,
+      preferences: prefs[0] || null,
     });
   } catch (error) {
     if (error instanceof AppError) {
@@ -50,22 +54,24 @@ export const updateUserProfile = async (req: Request, res: Response) => {
       throw new AppError(401, 'Unauthorized');
     }
 
-    const { fullName } = req.body;
+    const { firstName, lastName } = req.body;
 
     const result = await query(
-      `UPDATE users SET full_name = COALESCE($1, full_name)
-       WHERE id = $2
-       RETURNING id, email, full_name, created_at`,
-      [fullName || null, req.userId]
+      `UPDATE users SET first_name = CASE WHEN ? IS NOT NULL THEN ? ELSE first_name END,
+                        last_name = CASE WHEN ? IS NOT NULL THEN ? ELSE last_name END
+       WHERE id = ?
+       RETURNING id, email, first_name, last_name, created_at`,
+      [firstName || null, firstName, lastName || null, lastName, req.userId]
     );
 
-    if (result.rows.length === 0) {
+    const users = Array.isArray(result) ? result : (result?.rows || []);
+    if (users.length === 0) {
       throw new AppError(404, 'User not found');
     }
 
     res.json({
       message: 'Profile updated successfully',
-      user: result.rows[0],
+      user: users[0],
     });
   } catch (error) {
     if (error instanceof AppError) {
@@ -82,42 +88,38 @@ export const updateUserPreferences = async (req: Request, res: Response) => {
     }
 
     const {
-      preferredOptimization,
-      avoidTransfers,
-      maxWalkingDistance,
-      maxTransitTime,
-      notificationsEnabled,
+      optimization_strategy,
       theme,
+      max_walking_distance,
     } = req.body;
 
     const result = await query(
       `UPDATE user_preferences
-       SET preferred_optimization = COALESCE($1, preferred_optimization),
-           avoid_transfers = COALESCE($2, avoid_transfers),
-           max_walking_distance = COALESCE($3, max_walking_distance),
-           max_transit_time = COALESCE($4, max_transit_time),
-           notifications_enabled = COALESCE($5, notifications_enabled),
-           theme = COALESCE($6, theme)
-       WHERE user_id = $7
+       SET optimization_strategy = CASE WHEN ? IS NOT NULL THEN ? ELSE optimization_strategy END,
+           theme = CASE WHEN ? IS NOT NULL THEN ? ELSE theme END,
+           max_walking_distance = CASE WHEN ? IS NOT NULL THEN ? ELSE max_walking_distance END,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE user_id = ?
        RETURNING *`,
       [
-        preferredOptimization,
-        avoidTransfers,
-        maxWalkingDistance,
-        maxTransitTime,
-        notificationsEnabled,
+        optimization_strategy || null,
+        optimization_strategy,
+        theme || null,
         theme,
+        max_walking_distance || null,
+        max_walking_distance,
         req.userId,
       ]
     );
 
-    if (result.rows.length === 0) {
+    const prefs = Array.isArray(result) ? result : (result?.rows || []);
+    if (prefs.length === 0) {
       throw new AppError(404, 'User preferences not found');
     }
 
     res.json({
       message: 'Preferences updated successfully',
-      preferences: result.rows[0],
+      preferences: prefs[0],
     });
   } catch (error) {
     if (error instanceof AppError) {
@@ -140,45 +142,25 @@ export const deleteUserAccount = async (req: Request, res: Response) => {
     }
 
     // Get user to verify password
-    const userResult = await query('SELECT password_hash FROM users WHERE id = $1', [
+    const userResult = await query('SELECT password_hash FROM users WHERE id = ?', [
       req.userId,
     ]);
 
-    if (userResult.rows.length === 0) {
+    const users = Array.isArray(userResult) ? userResult : (userResult?.rows || []);
+    if (users.length === 0) {
       throw new AppError(404, 'User not found');
     }
 
-    // Start transaction for GDPR compliance
-    const client = await startTransaction();
+    // Delete all user data (GDPR - right to be forgotten)
+    await query('DELETE FROM saved_routes WHERE user_id = ?', [req.userId]);
+    await query('DELETE FROM user_preferences WHERE user_id = ?', [req.userId]);
+    await query('DELETE FROM audit_logs WHERE user_id = ?', [req.userId]);
+    await query('DELETE FROM users WHERE id = ?', [req.userId]);
 
-    try {
-      // Delete all user data (GDPR - right to be forgotten)
-      // Delete saved routes
-      await client.query('DELETE FROM saved_routes WHERE user_id = $1', [req.userId]);
-
-      // Delete user preferences
-      await client.query('DELETE FROM user_preferences WHERE user_id = $1', [
-        req.userId,
-      ]);
-
-      // Delete audit logs
-      await client.query('DELETE FROM audit_logs WHERE user_id = $1', [req.userId]);
-
-      // Delete user account
-      await client.query('DELETE FROM users WHERE id = $1', [req.userId]);
-
-      await client.query('COMMIT');
-      client.release();
-
-      res.json({
-        message:
-          'Account and all associated data deleted successfully (GDPR - Right to be Forgotten)',
-      });
-    } catch (error) {
-      await client.query('ROLLBACK');
-      client.release();
-      throw error;
-    }
+    res.json({
+      message:
+        'Account and all associated data deleted successfully (GDPR - Right to be Forgotten)',
+    });
   } catch (error) {
     if (error instanceof AppError) {
       return res.status(error.statusCode).json({ error: error.message });
