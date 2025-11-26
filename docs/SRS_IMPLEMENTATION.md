@@ -2,7 +2,7 @@
 
 Dokumentum célja: A Szoftverkövetelmény-Specifikáció (SRS) követelményeinek megvalósítási státusza nyomon követése.
 
-Frissítve: 2024-11-26
+Frissítve: 2025-11-26
 
 ## 1. BEVEZETÉS
 
