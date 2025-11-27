@@ -32,6 +32,10 @@ const Header: React.FC = () => {
           <Link to="/" className="text-white hover:text-blue-100 font-medium transition-colors">
             🏠 Kezdőlap
           </Link>
+          
+          <Link to="/search" className="text-white hover:text-blue-100 font-medium transition-colors">
+            🔍 Útvonal keresése
+          </Link>
 
           {isAuthenticated ? (
             <>
@@ -88,6 +92,13 @@ const Header: React.FC = () => {
             onClick={() => setIsMenuOpen(false)}
           >
             🏠 Kezdőlap
+          </Link>
+          <Link
+            to="/search"
+            className="block text-white hover:bg-blue-600 px-4 py-2 rounded transition-colors"
+            onClick={() => setIsMenuOpen(false)}
+          >
+            🔍 Útvonal keresése
           </Link>
           {isAuthenticated ? (
             <>
