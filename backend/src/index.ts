@@ -5,6 +5,7 @@ import { errorHandler } from './middleware/errorHandler';
 import { auditLog } from './middleware/auditLog';
 import authRoutes from './routes/authRoutes';
 import routeRoutes from './routes/routeRoutes';
+import debugRoutes from './routes/debugRoutes';
 
 const app: Express = express();
 
@@ -19,6 +20,7 @@ app.use(auditLog);
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/routes', routeRoutes);
+app.use('/api/debug', debugRoutes);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response) => {

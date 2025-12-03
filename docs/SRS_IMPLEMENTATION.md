@@ -27,16 +27,16 @@ Frissítve: 2025-11-26
 #### Útvonaltervezési Modul
 
 **SRS-FUNC-010: Alap útvonalszámítás**
-- ✅ **Implementált**: `/backend/src/services/routeCalculator.ts`
+- ✅ **Implementált**: `/backend/src/services/routeSearchService.ts`
 - Státusz: **KÉSZ**
-- Leírás: A `calculateRoutes()` függvény implementálva van, amely:
+- Leírás: A `findRoutes()` függvény implementálva van, amely:
   - Megkeresi a legközelebbi megállókat az origó és cél körül
   - Járatokat keres az megállók között
   - Útvonalakat számít gyalogos szakaszokkal
 - Tesztelés: Bemutató (B) módszerrel
 
 **SRS-FUNC-011: Optimalizálási stratégiák**
-- ✅ **Implementált**: `/backend/src/services/routeCalculator.ts`
+- ✅ **Implementált**: `/backend/src/services/routeSearchService.ts`
 - Státusz: **KÉSZ**
 - Leírás: Három optimalizálási stratégia:
   - `fastest`: Leggyorsabb érkezési idő (alapértelmezett)
@@ -220,8 +220,8 @@ Frissítve: 2025-11-26
 
 | Követelmény ID | Követelmény Címe | Eredet | Implementáció | Státusz |
 |----------------|-----------------|--------|----------------|---------|
-| SRS-FUNC-010 | Alap útvonalszámítás | Termék alapértéke | routeCalculator.ts | ✅ |
-| SRS-FUNC-011 | Optimalizálási stratégiák | Termék alapértéke | routeCalculator.ts | ✅ |
+| SRS-FUNC-010 | Alap útvonalszámítás | Termék alapértéke | routeSearchService.ts | ✅ |
+| SRS-FUNC-011 | Optimalizálási stratégiák | Termék alapértéke | routeSearchService.ts | ✅ |
 | SRS-FUNC-030 | Valós idejű adatintegráció | Felhasználói elvárás | vehicle_positions table | ⏳ |
 | SRS-BIZT-010 | Adattitkosítás | GDPR megfelelőség | encryption.ts | ✅ |
 | SRS-ADAT-010 | GDPR megfelelőség | Jogszabályi követelmény | userController.ts | ✅ |

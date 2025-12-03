@@ -1,43 +1,30 @@
 import { Request, Response } from 'express';
 import { query } from '../config/database';
 import { AppError } from '../middleware/errorHandler';
-import { findRoutes } from '../services/routeSearchService';
+import { findRoutes, searchStopsByName } from '../services/routeSearchService';
 
 export const searchRoutes = async (req: Request, res: Response) => {
   try {
     const {
-      originLat,
-      originLon,
       originName,
-      destinationLat,
-      destinationLon,
       destinationName,
-      departureTime,
       maxTransfers = 3,
       preferredTypes,
     } = req.body;
 
     // Validate input
-    if (!originLat || !originLon || !destinationLat || !destinationLon) {
-      throw new AppError(400, 'Origin and destination coordinates are required');
+    if (!originName || !destinationName) {
+      throw new AppError(400, 'Origin and destination stop names are required');
     }
 
     // Search routes using the route search service
     const result = await findRoutes(
+      originName.trim(),
+      destinationName.trim(),
       {
-        latitude: parseFloat(originLat),
-        longitude: parseFloat(originLon),
-        name: originName || 'Origin',
-      },
-      {
-        latitude: parseFloat(destinationLat),
-        longitude: parseFloat(destinationLon),
-        name: destinationName || 'Destination',
-      },
-      {
-        maxWalkingDistance: 500,
         preferredTypes: preferredTypes || ['metro', 'tram', 'bus'],
         allowTransfers: maxTransfers > 0,
+        maxTransfers: maxTransfers,
       }
     );
 
@@ -56,6 +43,22 @@ export const searchRoutes = async (req: Request, res: Response) => {
       return res.status(error.statusCode).json({ error: error.message });
     }
     res.status(500).json({ error: 'Route search failed', details: (error as Error).message });
+  }
+};
+
+export const getStopSuggestions = async (req: Request, res: Response) => {
+  try {
+    const { search } = req.query;
+
+    if (!search || typeof search !== 'string') {
+      return res.json({ stops: [] });
+    }
+
+    const stops = await searchStopsByName(search);
+    res.json({ stops });
+  } catch (error) {
+    console.error('Stop search error:', error);
+    res.status(500).json({ error: 'Stop search failed' });
   }
 };
 

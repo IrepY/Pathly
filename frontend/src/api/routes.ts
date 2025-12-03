@@ -1,19 +1,19 @@
 import apiClient from './client';
 
-export interface Coordinate {
-  lat: number;
-  lon: number;
-}
-
 export interface RouteSearchRequest {
-  originLat: number;
-  originLon: number;
-  destinationLat: number;
-  destinationLon: number;
+  originName: string;
+  destinationName: string;
   departureTime?: string;
   arrivalTime?: string;
   optimization?: 'fastest' | 'least_transfers' | 'earliest_departure';
   maxTransfers?: number;
+}
+
+export interface Stop {
+  id: number;
+  name: string;
+  latitude: number;
+  longitude: number;
 }
 
 export interface SavedRoute {
@@ -33,6 +33,9 @@ export interface SavedRoute {
 export const routeApi = {
   search: (data: RouteSearchRequest): Promise<any> =>
     apiClient.post('/routes/search', data).then((res) => res.data),
+
+  getStopSuggestions: (search: string): Promise<{ stops: Stop[] }> =>
+    apiClient.get('/routes/stops/suggestions', { params: { search } }).then((res) => res.data),
 
   saveRoute: (data: any): Promise<any> =>
     apiClient.post('/routes/save', data).then((res) => res.data),

@@ -149,7 +149,7 @@ docker-compose up --build
 - **Sorok**: ~1500
 - **Fájlok**: 15+
 - **Controllers**: 3 (auth, user, route)
-- **Services**: 1 (routeCalculator)
+- **Services**: 1 (routeSearchService)
 - **Middleware**: 3 (auth, errorHandler, auditLog)
 - **API Endpoints**: 12
 

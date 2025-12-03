@@ -1,16 +1,13 @@
 import { useState } from 'react';
+import StopAutocomplete from '../components/StopAutocomplete';
 
 export default function RouteSearchPage() {
   const [origin, setOrigin] = useState({
-    name: 'Deák Ferenc tér',
-    latitude: 47.5296,
-    longitude: 19.0405,
+    name: 'Keleti pályaudvar',
   });
 
   const [destination, setDestination] = useState({
-    name: 'Keleti pályaudvar',
-    latitude: 47.5027,
-    longitude: 19.0408,
+    name: 'Deák Ferenc tér',
   });
 
   const [routes, setRoutes] = useState([]);
@@ -59,16 +56,17 @@ export default function RouteSearchPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          originLat: origin.latitude,
-          originLon: origin.longitude,
           originName: origin.name,
-          destinationLat: destination.latitude,
-          destinationLon: destination.longitude,
           destinationName: destination.name,
-          maxTransfers: 2,
+          maxTransfers: 3,
           preferredTypes: ['metro', 'tram', 'bus'],
         }),
       });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Server error: ${response.status}`);
+      }
 
       const data = await response.json();
 
@@ -78,6 +76,7 @@ export default function RouteSearchPage() {
         setError('No routes found. Try different locations.');
       }
     } catch (err) {
+      console.error('Route search error:', err);
       setError(err instanceof Error ? err.message : 'Search failed');
     } finally {
       setLoading(false);
@@ -100,11 +99,7 @@ export default function RouteSearchPage() {
         },
         body: JSON.stringify({
           originName: origin.name,
-          originLat: origin.latitude,
-          originLon: origin.longitude,
           destinationName: destination.name,
-          destinationLat: destination.latitude,
-          destinationLon: destination.longitude,
           notes: `${route.name} - ${route.duration} mins`,
           routeData: route,
         }),
@@ -133,37 +128,21 @@ export default function RouteSearchPage() {
           <div className="lg:col-span-1">
             <form onSubmit={handleSearch} className="bg-white rounded-lg shadow-lg p-6 sticky top-8">
               <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    📍 From
-                  </label>
-                  <input
-                    type="text"
-                    value={origin.name}
-                    onChange={(e) => setOrigin({ ...origin, name: e.target.value })}
-                    placeholder="Enter origin"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                  <div className="text-xs text-gray-500 mt-1">
-                    {origin.latitude.toFixed(4)}, {origin.longitude.toFixed(4)}
-                  </div>
-                </div>
+                <StopAutocomplete
+                  value={origin.name}
+                  onChange={(name) => setOrigin({ ...origin, name })}
+                  placeholder="Enter origin stop"
+                  label="From"
+                  icon="📍"
+                />
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    🎯 To
-                  </label>
-                  <input
-                    type="text"
-                    value={destination.name}
-                    onChange={(e) => setDestination({ ...destination, name: e.target.value })}
-                    placeholder="Enter destination"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                  <div className="text-xs text-gray-500 mt-1">
-                    {destination.latitude.toFixed(4)}, {destination.longitude.toFixed(4)}
-                  </div>
-                </div>
+                <StopAutocomplete
+                  value={destination.name}
+                  onChange={(name) => setDestination({ ...destination, name })}
+                  placeholder="Enter destination stop"
+                  label="To"
+                  icon="🎯"
+                />
 
                 <button
                   type="submit"
@@ -222,7 +201,7 @@ export default function RouteSearchPage() {
                           <div className="bg-blue-50 p-3 rounded">
                             <div className="text-gray-600 text-xs">Distance</div>
                             <div className="font-bold text-gray-900">
-                              {route.distance.toFixed(1)} km
+                              {route.distance ? `${route.distance.toFixed(1)} km` : 'N/A'}
                             </div>
                           </div>
                           <div className="bg-blue-50 p-3 rounded">
@@ -247,7 +226,7 @@ export default function RouteSearchPage() {
                         onClick={() => handleSaveRoute(route)}
                         className="ml-4 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
                       >
-                        💾 Save
+                        💾 Mentés
                       </button>
                     </div>
                   </div>
@@ -255,9 +234,8 @@ export default function RouteSearchPage() {
               </div>
             ) : !loading && routes.length === 0 ? (
               <div className="bg-white rounded-lg shadow p-8 text-center">
-                <p className="text-gray-600 text-lg mb-4">Start searching to find available routes</p>
+                <p className="text-gray-600 text-lg mb-4">Kezdj keresni, hogy megtaláld az elérhető útvonalakat</p>
                 <div className="text-6xl mb-4">🗺️</div>
-                <p className="text-gray-500">Enter your origin and destination to see transit options</p>
               </div>
             ) : null}
           </div>
